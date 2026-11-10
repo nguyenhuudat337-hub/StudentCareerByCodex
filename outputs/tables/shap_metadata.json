@@ -1,0 +1,11 @@
+{
+  "explained_class": "Engineering",
+  "shap_array_shape": [
+    80,
+    81,
+    12
+  ],
+  "n_samples_explained": 80,
+  "shap_scale": "đầu ra thô của mô hình (logit/margin với nhiều tree models); không mặc nhiên là xác suất",
+  "warning": "SHAP mô tả đóng góp theo mô hình, không chứng minh nguyên nhân hay tỷ lệ đỗ tuyển sinh."
+}

@@ -1,0 +1,9 @@
+{
+  "exp": 9,
+  "model": "XGBoost",
+  "fs": "None",
+  "cv_f1_macro": 0.08820137604589243,
+  "best_params": {
+    "clf__learning_rate": 0.12
+  }
+}
