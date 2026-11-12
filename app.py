@@ -1,5 +1,6 @@
 """Streamlit demo: EDA, dự đoán 12 nhóm, so sánh CV, giải thích."""
 from pathlib import Path
+import json
 import joblib
 import numpy as np
 import pandas as pd
@@ -14,8 +15,9 @@ st.warning("**Lưu ý:** Xác suất mô hình gán cho nhóm nghề nghiệp đ
            "KHÔNG phải xác suất trúng tuyển vào ngành/trường và không bảo đảm mức độ phù hợp nghề.")
 
 @st.cache_resource
-def load_bundle(path):
-    return joblib.load(path)  # chỉ mở artifact do chính project này huấn luyện
+def load_bundle(path, modified_time_ns, file_size):
+    """Tải lại mô hình khi thời gian sửa hoặc kích thước file thay đổi."""
+    return joblib.load(path)
 
 @st.cache_data
 def load_csv():
@@ -42,19 +44,24 @@ if page==choices[0]:
     st.write("Trùng nếu bỏ student_id:",int(df.drop(columns="student_id",errors="ignore").duplicated().sum()))
     counts=df["recommended_career"].value_counts().reset_index()
     counts.columns=["Nhóm nghề","Số mẫu"]
-    st.plotly_chart(px.bar(counts,x="Nhóm nghề",y="Số mẫu",title="Phân bố nhãn"),use_container_width=True)
-    st.dataframe(df.head(20),use_container_width=True)
+    st.plotly_chart(px.bar(counts,x="Nhóm nghề",y="Số mẫu",title="Phân bố nhãn"),width="stretch")
+    st.dataframe(df.head(20),width="stretch")
     for fig_name,title in [("eda_boxplots.png","Boxplots"),("eda_correlation_heatmap.png","Tương quan")]:
         path=OUTPUT / "figures" / fig_name
         if path.exists():
-            st.subheader(title);st.image(str(path),use_container_width=True)
+            st.subheader(title);st.image(str(path),width="stretch")
 
 elif page==choices[1]:
     st.subheader("Nhập thông tin sinh viên và dự đoán nhóm nghề")
     if not model_path.exists():
         st.info("Chưa có mô hình hoàn chỉnh. Chạy `python scripts/train.py --profile quick` ở thư mục dự án.")
         st.stop()
-    bundle=load_bundle(str(model_path))
+    model_stat = model_path.stat()
+    bundle = load_bundle(
+        str(model_path),
+        model_stat.st_mtime_ns,
+        model_stat.st_size,
+    )
     model=bundle["model"]
     label_encoder=bundle["label_encoder"]
     schema=bundle["input_schema"]
@@ -62,12 +69,24 @@ elif page==choices[1]:
     metrics=bundle.get("test_metrics",{})
     if metrics:
         cv_path=OUTPUT / "tables" / "cv_experiment_results.csv"
-        if cv_path.exists():
-            cv_comparison=pd.read_csv(cv_path,keep_default_na=False)
-            base_row=cv_comparison[cv_comparison["model"]=="Dummy"]
-            if not base_row.empty and float(bundle["selected_cv"]["cv_f1_macro"])<=float(base_row.iloc[0]["best_cv_f1_macro"]):
-                st.error("Mô hình chưa vượt baseline ngẫu nhiên trên Macro F1 CV. "
-                         "Chỉ xem dự đoán như minh họa, KHÔNG dùng để tư vấn nghề thực tế.")
+        baseline = bundle.get("dummy_cv")
+        if (
+            not baseline
+            or not bundle.get("run_id")
+            or baseline.get("run_id") != bundle["run_id"]
+        ):
+            st.warning(
+                "Chưa có baseline đồng bộ với mô hình. "
+                "Hãy huấn luyện lại để cập nhật kết quả."
+            )
+        elif (
+            float(bundle["selected_cv"]["cv_f1_macro"])
+            <= float(baseline["best_cv_f1_macro"])
+        ):
+            st.error(
+                "Mô hình chưa vượt baseline ngẫu nhiên trên Macro F1 CV. "
+                "Chỉ xem dự đoán như minh họa, KHÔNG dùng để tư vấn nghề thực tế."
+            )
         st.info(f"Kết quả kiểm tra Test: Macro F1 = {metrics['f1_macro']:.3f}; "
                 f"Log loss = {metrics['log_loss_multiclass']:.3f}. "
                 "Chất lượng xác suất cần xem cùng calibration; không suy ra độ phù hợp hay tỷ lệ đỗ.")
@@ -93,7 +112,7 @@ elif page==choices[1]:
                 settings=schema[key]
                 vals[key]=cols[idx%2].selectbox(key,options=settings["choices"],
                      index=settings["choices"].index(settings["default"]))
-        submit=st.form_submit_button("Dự đoán 12 nhóm nghề",type="primary",use_container_width=True)
+        submit=st.form_submit_button("Dự đoán 12 nhóm nghề",type="primary",width="stretch")
     if submit:
         student=pd.DataFrame([{name:vals[name] for name in bundle["raw_features"]}])
         proba=np.asarray(model.predict_proba(student))[0]
@@ -113,33 +132,232 @@ elif page==choices[1]:
                    title="Xác suất dự đoán của mô hình cho đủ 12 nhóm nghề",
                    text=chart["Xác suất"].map(lambda x:f"{x*100:.1f}%"))
         fig.update_layout(yaxis={"categoryorder":"total ascending"},xaxis_tickformat=".0%")
-        st.plotly_chart(fig,use_container_width=True)
+        st.plotly_chart(fig,width="stretch")
         st.caption("Xác suất có thể chưa được hiệu chỉnh tốt. Không dùng làm tỷ lệ trúng tuyển hoặc bảo đảm nghề phù hợp.")
+        st.subheader("Giải thích dự đoán cho hồ sơ vừa nhập")
+
+        calibration = bundle.get("calibration_train_selection") or {}
+        if calibration.get("use_calibrated", False):
+            st.info(
+                "Phần giải thích trực tiếp chưa hỗ trợ mô hình "
+                "đã hiệu chỉnh xác suất."
+            )
+        else:
+            from career_ml.explain import explain_student
+            from career_ml.data import load_data, prepare_xy, split_data
+            from career_ml.config import SEED
+            import shap
+            import matplotlib.pyplot as plt
+
+            waterfall_fig = None
+            try:
+                with st.spinner("Đang tính đóng góp của các đặc trưng..."):
+                    background = None
+
+                    # Logistic Regression cần dữ liệu nền lấy từ Train.
+                    if hasattr(model.named_steps["clf"], "coef_"):
+                        X, y, _ = prepare_xy(
+                            load_data(),
+                            excluded=bundle["excluded_columns"],
+                        )
+                        X_train, _, _, _ = split_data(X, y)
+                        background = X_train.sample(
+                            n=min(80, len(X_train)),
+                            random_state=SEED,
+                        )
+
+                    explanation_result = explain_student(
+                        bundle,
+                        student,
+                        background_train=background,
+                    )
+
+                    if (
+                        explanation_result["class_name"] != str(labels[best])
+                        or not np.isclose(
+                            explanation_result["probability"], proba[best]
+                        )
+                    ):
+                        raise ValueError(
+                            "Kết quả giải thích không khớp dự đoán vừa hiển thị."
+                        )
+
+                    waterfall_fig = plt.figure()
+                    shap.plots.waterfall(
+                        explanation_result["explanation"],
+                        max_display=15,
+                        show=False,
+                    )
+                    waterfall_fig = plt.gcf()
+
+                st.write(
+                    "Nhóm nghề đang được giải thích:",
+                    explanation_result["class_name"],
+                )
+                st.caption(
+                    f"Thang đo SHAP: {explanation_result['scale']}. "
+                    "Các giá trị đặc trưng trên hình đã được chuẩn hóa "
+                    "hoặc mã hóa theo pipeline."
+                )
+                st.pyplot(waterfall_fig)
+
+                st.caption(
+                    "Thanh đỏ làm tăng đầu ra của lớp đang giải thích; "
+                    "thanh xanh làm giảm đầu ra so với mức nền. "
+                    "Đây là giải thích hành vi mô hình, "
+                    "không chứng minh mức độ phù hợp nghề nghiệp."
+                )
+            except Exception as exc:
+                st.warning(
+                    "Đã có kết quả dự đoán nhưng chưa tạo được giải thích."
+                )
+                st.code(f"{type(exc).__name__}: {exc}")
+            finally:
+                if waterfall_fig is not None:
+                    plt.close(waterfall_fig)
 
 elif page==choices[2]:
     st.subheader("So sánh 13 cấu hình theo Train CV")
-    result_path=OUTPUT / "tables" / "cv_experiment_results.csv"
-    if not result_path.exists():
-        st.info("Chạy train.py để tạo bảng thực nghiệm đầy đủ.");st.stop()
-    results=pd.read_csv(result_path,keep_default_na=False)
-    st.dataframe(results,use_container_width=True)
-    st.caption("Các điểm CV trên tập Train, KHÔNG phải điểm Test. Chọn model bằng CV trước khi đánh giá Test.")
-    group=results[results["model"]!="Dummy"]
-    st.plotly_chart(px.bar(group,x="model",y="best_cv_f1_macro",color="fs",barmode="group",
-                           title="Macro F1 bằng StratifiedKFold(5)"),use_container_width=True)
-    metrics_path=OUTPUT / "tables" / "test_metrics.json"
-    if metrics_path.exists():
-        import json
+    result_path = OUTPUT / "tables" / "cv_experiment_results.csv"
+
+    if not result_path.exists() or not model_path.exists():
+        st.info("Hãy hoàn tất huấn luyện để xem kết quả.")
+        st.stop()
+
+    model_stat = model_path.stat()
+    bundle = load_bundle(
+        str(model_path),
+        model_stat.st_mtime_ns,
+        model_stat.st_size,
+    )
+
+    try:
+        results = pd.read_csv(result_path, keep_default_na=False)
+    except (OSError, pd.errors.EmptyDataError, pd.errors.ParserError):
+        st.warning("Chưa đọc được bảng kết quả. Hãy chờ huấn luyện hoàn tất.")
+        st.stop()
+
+    run_id = bundle.get("run_id")
+    if (
+        not run_id
+        or "run_id" not in results.columns
+        or len(results) != 13
+        or not results["run_id"].eq(run_id).all()
+    ):
+        st.warning(
+            "Bảng thực nghiệm chưa đầy đủ hoặc không cùng lần huấn luyện "
+            "với mô hình. Hãy hoàn tất huấn luyện rồi mở lại trang."
+        )
+        st.stop()
+
+    st.dataframe(results.drop(columns="run_id"), width="stretch")
+    st.caption(
+        "Các điểm CV trên tập Train, KHÔNG phải điểm Test. "
+        "Mô hình được chọn bằng CV trước khi đánh giá Test."
+    )
+
+    group = results[results["model"] != "Dummy"]
+    st.plotly_chart(
+        px.bar(
+            group,
+            x="model",
+            y="best_cv_f1_macro",
+            color="fs",
+            barmode="group",
+            title="Macro F1 bằng StratifiedKFold(5)",
+        ),
+        width="stretch",
+    )
+
+    metrics = bundle.get("test_metrics")
+    if metrics:
         st.subheader("Chỉ số Test của mô hình cuối")
-        st.json(json.loads(metrics_path.read_text(encoding="utf-8")))
+        st.json(metrics)
 
 elif page==choices[3]:
     st.subheader("Giải thích mô hình — Feature Importance, Permutation Importance và SHAP")
     st.caption("SHAP giải thích đầu ra mô hình, không chứng minh quan hệ nhân quả hoặc trúng tuyển thực tế.")
+    metadata_path = OUTPUT / "tables" / "shap_metadata.json"
+
+    if not model_path.exists() or not metadata_path.exists():
+        st.warning(
+            "Chưa có đủ mô hình và kết quả giải thích. "
+            "Hãy hoàn tất huấn luyện và chạy scripts/run_explain.py."
+        )
+        st.stop()
+
+    model_stat = model_path.stat()
+    bundle = load_bundle(
+        str(model_path),
+        model_stat.st_mtime_ns,
+        model_stat.st_size,
+    )
+
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        st.warning("Chưa đọc được thông tin XAI. Hãy tạo lại kết quả giải thích.")
+        st.stop()
+
+    model_run_id = bundle.get("run_id")
+    xai_run_id = metadata.get("run_id") if isinstance(metadata, dict) else None
+
+    if not model_run_id or xai_run_id != model_run_id:
+        st.warning(
+            "Hình giải thích chưa khớp với mô hình hiện tại. "
+            "Hãy chạy lại scripts/run_explain.py sau khi huấn luyện."
+        )
+        st.stop()
+    if metadata.get("data_source") != "test_sample":
+        st.warning(
+            "Thông tin về mẫu giải thích chưa được cập nhật. "
+            "Hãy chạy lại scripts/run_explain.py."
+        )
+        st.stop()
+
+    explained_class = metadata["explained_class"]
+    sample_count = metadata["n_samples_explained"]
+
+    st.info(
+        "Các hình bên dưới là kết quả giải thích đã tạo sẵn. "
+        "Feature Importance lấy từ mô hình đã học trên Train; "
+        "Permutation Importance và SHAP được phân tích trên mẫu Test. "
+        "Chúng không giải thích hồ sơ vừa nhập ở trang Dự đoán nghề nghiệp."
+    )
+
+    st.markdown(
+        f"**SHAP Summary:** đóng góp của các đặc trưng đối với lớp "
+        f"**{explained_class}**, trên **{sample_count} hồ sơ Test**."
+    )
+
+    st.markdown(
+        f"**SHAP Waterfall:** giải thích lớp **{explained_class}** "
+        f"được pipeline dự đoán cho hồ sơ có chỉ mục "
+        f"**{metadata['local_sample_index']}**. "
+        f"Nhãn thực tế trong dữ liệu: **{metadata['local_true_class']}**."
+    )
+
+    st.caption(
+        "Chỉ mục trên là chỉ mục dòng dữ liệu, không phải mã sinh viên. "
+        "SHAP Summary này chỉ mô tả lớp được ghi tên, "
+        "không tổng hợp độ quan trọng cho cả 12 lớp."
+    )
+
+    if metadata.get("prediction_model_calibrated"):
+        st.warning(
+            "Mô hình dự đoán đã được hiệu chỉnh xác suất. "
+            "Các hình này giải thích pipeline trước hiệu chỉnh, "
+            "không trực tiếp giải thích xác suất cuối cùng."
+        )
+
+    st.caption(
+        "Giá trị SHAP không mặc nhiên là phần trăm xác suất. "
+        "Với XGBoost hiện tại, chúng giải thích đầu ra margin của mô hình."
+    )
     for title,file in [("Feature Importance","feature_importance.png"),
                        ("Permutation Importance","permutation_importance.png"),
                        ("SHAP Summary (global)","shap_summary.png"),
                        ("SHAP Waterfall (local)","shap_waterfall.png")]:
         p=OUTPUT / "figures" / file
-        if p.exists():st.subheader(title);st.image(str(p),use_container_width=True)
+        if p.exists():st.subheader(title);st.image(str(p),width="stretch")
     st.caption("Nếu chưa có SHAP: chạy `python scripts/run_explain.py` sau khi huấn luyện đầy đủ.")

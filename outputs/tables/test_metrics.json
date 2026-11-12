@@ -2,7 +2,8 @@
   "accuracy": 0.08,
   "precision_macro": 0.08030409841051728,
   "recall_macro": 0.08,
+  "recall_weighted": 0.08,
   "f1_macro": 0.07974717096556443,
   "f1_weighted": 0.07974717096556441,
-  "log_loss_multiclass": 2.5425229899259594
+  "log_loss_multiclass": 2.54252299219507
 }

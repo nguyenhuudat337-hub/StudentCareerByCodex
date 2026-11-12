@@ -1,4 +1,5 @@
 {
+  "run_id": "660bb324a6a14edbbe554e6c25d02a84",
   "dataset_rows": 12000,
   "n_train": 9600,
   "n_test": 2400,
@@ -76,8 +77,8 @@
   "preset": "quick",
   "debug": false,
   "versions": {
-    "python": "3.13.5",
+    "python": "3.11.9",
     "sklearn": "1.8.0",
-    "xgboost": "3.1.3"
+    "xgboost": "3.2.0"
   }
 }

@@ -5,6 +5,7 @@ import platform
 import time
 import warnings
 from pathlib import Path
+from uuid import uuid4
 import joblib
 import numpy as np
 import pandas as pd
@@ -22,6 +23,7 @@ from .evaluation import summary_metrics, test_evaluation, plot_cv_comparison
 
 SCORING = {"accuracy":"accuracy", "precision_macro":make_scorer(precision_score,average="macro",zero_division=0),
            "recall_macro":make_scorer(recall_score,average="macro",zero_division=0),
+            "recall_weighted": make_scorer(recall_score, average="weighted", zero_division=0),
            "f1_macro":make_scorer(f1_score,average="macro",zero_division=0),
            "f1_weighted":make_scorer(f1_score,average="weighted",zero_division=0)}
 
@@ -60,6 +62,8 @@ def run_experiment(data_path=DATA_PATH, output=OUTPUT, preset="quick", jobs=2,
     debug_rows/limit chỉ kiểm thử và KHÔNG tạo model chính thức hoặc đánh giá Test.
     """
     data = load_data(data_path)
+    run_id = uuid4().hex
+    print(f"Mã lần huấn luyện: {run_id}", flush=True)
     data_audit = audit_data(data)
     if debug_rows is not None:
         if debug_rows < 120:
@@ -74,7 +78,8 @@ def run_experiment(data_path=DATA_PATH, output=OUTPUT, preset="quick", jobs=2,
     json_dump(data_audit,output / "tables" / "data_quality_audit.json")
     X,y,encoder = prepare_xy(data)
     X_train,X_test,y_train,y_test = split_data(X,y)
-    json_dump({"dataset_rows":len(data),"n_train":len(X_train),"n_test":len(X_test),
+    json_dump({"run_id": run_id,
+               "dataset_rows":len(data),"n_train":len(X_train),"n_test":len(X_test),
                "class_labels":encoder.classes_.tolist(),"excluded_columns":EXCLUDE_COLUMNS,
                "feature_count_raw":len(X.columns),"feature_names":X.columns.tolist(),
                "seed":SEED,"test_size":TEST_SIZE,"folds":FOLDS,"preset":preset,
@@ -97,9 +102,11 @@ def run_experiment(data_path=DATA_PATH, output=OUTPUT, preset="quick", jobs=2,
               "best_cv_accuracy":float(baseline_cv["test_accuracy"].mean()),
               "best_cv_precision_macro":float(baseline_cv["test_precision_macro"].mean()),
               "best_cv_recall_macro":float(baseline_cv["test_recall_macro"].mean()),
+            "best_cv_recall_weighted": float(baseline_cv["test_recall_weighted"].mean()),
               "best_cv_f1_weighted":float(baseline_cv["test_f1_weighted"].mean()),
               "seconds":round(time.perf_counter()-t,2),"num_selected_features":None,
               "best_params":"{}"}
+    baseline["run_id"] = run_id
     rows.append(baseline)
     print(f"[00/12] Dummy CV Macro F1 = {baseline['best_cv_f1_macro']:.4f}",flush=True)
     selected=None
@@ -126,10 +133,12 @@ def run_experiment(data_path=DATA_PATH, output=OUTPUT, preset="quick", jobs=2,
                  "best_cv_accuracy":float(res["mean_test_accuracy"][ix]),
                  "best_cv_precision_macro":float(res["mean_test_precision_macro"][ix]),
                  "best_cv_recall_macro":float(res["mean_test_recall_macro"][ix]),
+                "best_cv_recall_weighted": float(res["mean_test_recall_weighted"][ix]),
                  "best_cv_f1_weighted":float(res["mean_test_f1_weighted"][ix]),
                  "seconds":round(took,2),
                  "num_selected_features":_features_count(search.best_estimator_),
                  "best_params":json.dumps(search.best_params_,ensure_ascii=False)}
+            row["run_id"] = run_id
             rows.append(row)
             frame=pd.DataFrame(rows)
             frame.to_csv(output / "tables" / "cv_experiment_results.csv",index=False)
@@ -158,11 +167,19 @@ def run_experiment(data_path=DATA_PATH, output=OUTPUT, preset="quick", jobs=2,
             selected,X_train,y_train,output)
     # Đánh giá Test DUY NHẤT ở đây, sau khi chọn mô hình và quyết định calibration.
     metrics=test_evaluation(final_model,X_test,y_test,encoder,output)
-    bundle={"model":final_model,"label_encoder":encoder,
+    selected.training_run_id_ = run_id
+    final_model.training_run_id_ = run_id
+    bundle={"run_id": run_id,
+            "dummy_cv": baseline.copy(),
+            "model":final_model,"label_encoder":encoder,
             "input_schema":input_schema(X_train), "raw_features":X_train.columns.tolist(),
             "excluded_columns":EXCLUDE_COLUMNS,"selected_cv":best_config,
             "test_metrics":metrics,"calibration_train_selection":calibrated_report,
-            "trained_on_full_dataset":True,"dataset_rows":len(data),"preset":preset}
+            "trained_on_train_only": True,
+            "train_rows": len(X_train),
+            "test_rows": len(X_test),
+            "dataset_rows": len(data),
+            "preset": preset}
     joblib.dump(bundle,output / "models" / "career_classifier.joblib",compress=3)
     # SHAP/intrinsic importance sử dụng mô hình gốc đã fit trước calibration, nếu chọn hiệu chỉnh.
     # Mô hình chính để giải thích SHAP giữ riêng vì CalibratedClassifierCV gồm nhiều base estimators.

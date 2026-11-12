@@ -1,5 +1,11 @@
 {
+  "run_id": "660bb324a6a14edbbe554e6c25d02a84",
   "explained_class": "Engineering",
+  "data_source": "test_sample",
+  "local_sample_index": "10658",
+  "local_true_class": "Sales_Marketing",
+  "explained_model": "uncalibrated_selected_pipeline",
+  "prediction_model_calibrated": false,
   "shap_array_shape": [
     80,
     81,

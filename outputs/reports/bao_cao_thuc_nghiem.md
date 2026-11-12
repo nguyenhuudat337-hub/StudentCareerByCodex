@@ -19,6 +19,7 @@
 - accuracy: 0.080000
 - precision_macro: 0.080304
 - recall_macro: 0.080000
+- recall_weighted: 0.080000
 - f1_macro: 0.079747
 - f1_weighted: 0.079747
 - log_loss_multiclass: 2.542523
@@ -45,9 +46,9 @@
 
 
 ## 7. Baseline khởi tạo (trước GridSearchCV; đánh giá bằng Train CV)
-- Logistic Regression mặc định: Macro F1 CV=0.0793; Accuracy CV=0.0806; 1.8 giây.
-- Random Forest mặc định: Macro F1 CV=0.0823; Accuracy CV=0.0830; 11.7 giây.
-- XGBoost mặc định: Macro F1 CV=0.0905; Accuracy CV=0.0909; 8.3 giây.
+- Logistic Regression mặc định: Macro F1 CV=0.0793; Accuracy CV=0.0806; 0.1 giây.
+- Random Forest mặc định: Macro F1 CV=0.0769; Accuracy CV=0.0773; 10.2 giây.
+- XGBoost mặc định: Macro F1 CV=0.0905; Accuracy CV=0.0909; 5.7 giây.
 
 ## KẾT LUẬN GIỚI HẠN
 - **Mô hình chính tốt nhất chưa vượt Dummy baseline trên Macro F1 của Train CV.**
