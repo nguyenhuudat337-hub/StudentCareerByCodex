@@ -1,5 +1,6 @@
 """Tạo 13 cấu hình có preprocessing và FS nằm BÊN TRONG CV."""
 from __future__ import annotations
+from functools import partial
 import numpy as np
 from sklearn.compose import ColumnTransformer
 from sklearn.dummy import DummyClassifier
@@ -43,11 +44,39 @@ def make_estimator(name):
     raise KeyError(name)
 
 
-def make_selector(fs):
+def mixed_mutual_info(X, y, *, n_numeric):
+    """Đánh dấu các cột One-Hot là rời rạc khi tính MI."""
+    X = np.asarray(X)
+
+    if X.ndim != 2 or not 0 <= n_numeric <= X.shape[1]:
+        raise ValueError("Số cột số không khớp dữ liệu sau tiền xử lý.")
+
+    # ColumnTransformer xuất nhánh num trước, nhánh cat sau.
+    discrete_mask = np.zeros(X.shape[1], dtype=bool)
+    discrete_mask[n_numeric:] = True
+
+    return mutual_info_classif(
+        X,
+        y,
+        discrete_features=discrete_mask,
+        random_state=SEED,
+    )
+
+
+def make_selector(fs, n_numeric=None):
     if fs == "None":
         return "passthrough"
     if fs == "Filter":
-        return SelectKBest(score_func=lambda X, y: mutual_info_classif(X, y, random_state=SEED), k=16)
+        if n_numeric is None:
+            raise ValueError("Filter cần biết số cột của nhánh num.")
+
+        return SelectKBest(
+            score_func=partial(
+                mixed_mutual_info,
+                n_numeric=n_numeric,
+            ),
+            k=16,
+        )
     if fs == "Wrapper":
         return RFE(estimator=LogisticRegression(max_iter=400, solver="lbfgs", random_state=SEED),
                    n_features_to_select=16, step=0.3)
@@ -59,9 +88,13 @@ def make_selector(fs):
 
 
 def make_pipeline(X_train, name, fs):
+    n_numeric = len(
+        X_train.select_dtypes(include=np.number).columns
+    )
+
     return Pipeline([
         ("preprocess", make_preprocessor(X_train)),
-        ("fs", make_selector(fs)),
+        ("fs", make_selector(fs, n_numeric=n_numeric)),
         ("clf", make_estimator(name)),
     ])
 
