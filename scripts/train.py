@@ -2,7 +2,9 @@ import argparse
 from career_ml.experiment import run_experiment
 
 def main():
-    p=argparse.ArgumentParser(description="Dự án phân loại nghề v3.1 — 13 cấu hình")
+    p = argparse.ArgumentParser(
+        description="Phân loại nghề nghiệp với 3 mô hình và 12 cấu hình thực nghiệm"
+    )
     p.add_argument("--profile",default="quick",choices=["quick","standard","full"])
     p.add_argument("--jobs",type=int,default=2,help="Số tiến trình song song trong CV")
     p.add_argument("--limit",type=int,default=None,help="DEBUG: chỉ chạy N mô hình, không Test")

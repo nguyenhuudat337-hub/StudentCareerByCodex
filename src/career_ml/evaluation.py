@@ -106,8 +106,7 @@ def test_evaluation(model, X_test, y_test, label_encoder, out):
 
 
 def plot_cv_comparison(results, out):
-    d = pd.DataFrame(results)
-    valid = d[d["model"] != "Dummy"].copy()
+    valid = pd.DataFrame(results)
     if valid.empty:
         return
     fig, ax = plt.subplots(figsize=(12, 6))

@@ -24,7 +24,7 @@ python scripts/run_explain.py --samples 80
 streamlit run app.py
 ```
 
-**`quick` vẫn chạy 100% dữ liệu, đủ 5 folds, 13 cấu hình (Dummy + 12 GridSearchCV).** Grid nhỏ, 2 ứng viên cho mỗi mô hình chính nên chỉ thử tham số cơ bản. Nếu muốn lưới rộng hơn, chạy lại với `--profile standard` hoặc `--profile full` (rất tốn tài nguyên/thời gian); các lần chạy trên cùng output sẽ ghi đè tệp kết quả. `--jobs 2` an toàn với RAM cá nhân hơn `-1`.
+**`quick` vẫn chạy 100% dữ liệu, đủ 5 folds, 12 cấu hình (3 mô hình × 4 trường hợp chọn đặc trưng).** Grid nhỏ, 2 ứng viên cho mỗi cấu hình nên chỉ thử tham số cơ bản. Nếu muốn lưới rộng hơn, chạy lại với `--profile standard` hoặc `--profile full` (rất tốn tài nguyên/thời gian); các lần chạy trên cùng output sẽ ghi đè tệp kết quả. `--jobs 2` an toàn với RAM cá nhân hơn `-1`.
 
 Chạy **debug** nhanh (không có Test, không tạo model demo và không dùng số liệu debug để báo cáo):
 
@@ -47,7 +47,7 @@ Chức năng trên so sánh log loss của sigmoid calibration với pipeline g�
 - `src/career_ml/config.py`: nhãn, seed, danh sách loại cột nguy cơ leakage.
 - `src/career_ml/data.py`: đọc dữ liệu, missing/duplicates, split, schema form.
 - `src/career_ml/eda.py`: histogram, countplot, boxplot, heatmap, class distribution.
-- `src/career_ml/modeling.py`: Dummy, LR, RF, XGBoost; None/Filter/Wrapper/Embedded.
+- `src/career_ml/modeling.py`: Logistic Regression, Random Forest và XGBoost với bốn lựa chọn None, Filter, Wrapper và Embedded.
 - `src/career_ml/experiment.py`: 12 GridSearchCV, 5-fold CV, chọn từ Train rồi Test duy nhất.
 - `src/career_ml/evaluation.py`: metrics, confusion, calibration 12 lớp, log loss.
 - `src/career_ml/explain.py`: feature importance, permutation, SHAP summary/waterfall.
@@ -70,7 +70,7 @@ Chức năng trên so sánh log loss của sigmoid calibration với pipeline g�
 
 ## 5. Kết quả sau khi chạy
 
-`initial_baselines_cv.csv` (3 mô hình chưa tuning); `cv_experiment_results.csv` (13 dòng); `grid_01.csv` đến `grid_12.csv`; `selected_model_train_cv.json`; `test_metrics.json`, `classification_report.csv`, `confusion_matrix.csv`, `calibration_bins.csv`, `test_predictions.csv`; hình EDA/CV/confusion/calibration/XAI; báo cáo `bao_cao_thuc_nghiem.md`; mô hình `career_classifier.joblib`.
+`initial_baselines_cv.csv` (3 mô hình chưa tuning); `cv_experiment_results.csv` (12 dòng kết quả); `grid_01.csv` đến `grid_12.csv`; `selected_model_train_cv.json`; `test_metrics.json`, `classification_report.csv`, `confusion_matrix.csv`, `calibration_bins.csv`, `test_predictions.csv`; hình EDA/CV/confusion/calibration/XAI; báo cáo `bao_cao_thuc_nghiem.md`; mô hình `career_classifier.joblib`.
 
 ## 6. Kiểm thử
 

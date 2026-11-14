@@ -3,7 +3,7 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
-from career_ml.config import OUTPUT,DATA_PATH
+from career_ml.config import DATA_PATH, FS_NAMES, MODEL_NAMES, OUTPUT
 from career_ml.data import load_data,prepare_xy,split_data
 
 
@@ -11,9 +11,15 @@ def main():
     root=OUTPUT
     df=load_data(DATA_PATH)
     runs=pd.read_csv(root/"tables"/"cv_experiment_results.csv",keep_default_na=False)
-    assert len(runs)==13, f"Có {len(runs)} thay vì 13 cấu hình"
-    assert set(runs["model"])=={"Dummy","Logistic Regression","Random Forest","XGBoost"}
-    assert {"None","Filter","Wrapper","Embedded"}==set(runs["fs"])
+    expected_pairs = {(model, fs) for model in MODEL_NAMES for fs in FS_NAMES}
+    actual_pairs = set(runs[["model", "fs"]].itertuples(index=False, name=None))
+    assert len(runs) == len(expected_pairs), (
+        f"Có {len(runs)} dòng kết quả, cần {len(expected_pairs)} cấu hình."
+    )
+    assert actual_pairs == expected_pairs, (
+        f"Cấu hình thiếu: {expected_pairs - actual_pairs}. "
+        f"Cấu hình thừa: {actual_pairs - expected_pairs}."
+    )
     model_path=root/"models"/"career_classifier.joblib"
     bundle=joblib.load(model_path)  # artifact do dự án tự sinh
     model=bundle["model"]

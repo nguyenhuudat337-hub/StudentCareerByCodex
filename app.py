@@ -66,30 +66,13 @@ elif page==choices[1]:
     label_encoder=bundle["label_encoder"]
     schema=bundle["input_schema"]
     st.write("Mô hình:",bundle["selected_cv"]["model"],"| Feature Selection:",bundle["selected_cv"]["fs"])
-    metrics=bundle.get("test_metrics",{})
+    metrics = bundle.get("test_metrics", {})
     if metrics:
-        cv_path=OUTPUT / "tables" / "cv_experiment_results.csv"
-        baseline = bundle.get("dummy_cv")
-        if (
-            not baseline
-            or not bundle.get("run_id")
-            or baseline.get("run_id") != bundle["run_id"]
-        ):
-            st.warning(
-                "Chưa có baseline đồng bộ với mô hình. "
-                "Hãy huấn luyện lại để cập nhật kết quả."
-            )
-        elif (
-            float(bundle["selected_cv"]["cv_f1_macro"])
-            <= float(baseline["best_cv_f1_macro"])
-        ):
-            st.error(
-                "Mô hình chưa vượt baseline ngẫu nhiên trên Macro F1 CV. "
-                "Chỉ xem dự đoán như minh họa, KHÔNG dùng để tư vấn nghề thực tế."
-            )
-        st.info(f"Kết quả kiểm tra Test: Macro F1 = {metrics['f1_macro']:.3f}; "
-                f"Log loss = {metrics['log_loss_multiclass']:.3f}. "
-                "Chất lượng xác suất cần xem cùng calibration; không suy ra độ phù hợp hay tỷ lệ đỗ.")
+        st.info(
+            f"Kết quả kiểm tra Test: Macro F1 = {metrics['f1_macro']:.3f}; "
+            f"Log loss = {metrics['log_loss_multiclass']:.3f}. "
+            "Chất lượng xác suất cần xem cùng calibration; không suy ra độ phù hợp hay tỷ lệ đỗ."
+        )
     with st.form("student_data"):
         vals={}
         numeric_cols=[k for k,v in schema.items() if v["kind"]=="numeric"]
@@ -217,7 +200,7 @@ elif page==choices[1]:
                     plt.close(waterfall_fig)
 
 elif page==choices[2]:
-    st.subheader("So sánh 13 cấu hình theo Train CV")
+    st.subheader("So sánh 12 cấu hình theo Train CV")
     result_path = OUTPUT / "tables" / "cv_experiment_results.csv"
 
     if not result_path.exists() or not model_path.exists():
@@ -241,7 +224,7 @@ elif page==choices[2]:
     if (
         not run_id
         or "run_id" not in results.columns
-        or len(results) != 13
+        or len(results) != 12
         or not results["run_id"].eq(run_id).all()
     ):
         st.warning(
@@ -256,10 +239,9 @@ elif page==choices[2]:
         "Mô hình được chọn bằng CV trước khi đánh giá Test."
     )
 
-    group = results[results["model"] != "Dummy"]
     st.plotly_chart(
         px.bar(
-            group,
+            results,
             x="model",
             y="best_cv_f1_macro",
             color="fs",

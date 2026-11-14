@@ -1,9 +1,8 @@
-"""Tạo 13 cấu hình có preprocessing và FS nằm BÊN TRONG CV."""
+"""Tạo 12 cấu hình từ 3 mô hình và 4 trường hợp chọn đặc trưng."""           
 from __future__ import annotations
 from functools import partial
 import numpy as np
 from sklearn.compose import ColumnTransformer
-from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import SelectKBest, mutual_info_classif, RFE, SelectFromModel
 from sklearn.linear_model import LogisticRegression
@@ -39,8 +38,6 @@ def make_estimator(name):
                              subsample=1.0, colsample_bytree=1.0,
                              objective="multi:softprob", eval_metric="mlogloss",
                              tree_method="hist", n_jobs=1, random_state=SEED)
-    if name == "Dummy":
-        return DummyClassifier(strategy="stratified", random_state=SEED)
     raise KeyError(name)
 
 

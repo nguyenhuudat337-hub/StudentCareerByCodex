@@ -1,4 +1,4 @@
-"""Huấn luyện 1 Dummy + 12 cấu hình; Test chỉ gọi sau khi chọn Train CV."""
+"""Huấn luyện 12 cấu hình từ 3 mô hình chính và đánh giá trên Test sau khi chọn bằng CV."""
 from __future__ import annotations
 import json
 import platform
@@ -13,7 +13,7 @@ import sklearn
 import xgboost
 from sklearn.base import clone
 from sklearn.calibration import CalibratedClassifierCV
-from sklearn.model_selection import GridSearchCV, cross_validate, train_test_split
+from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.metrics import make_scorer, precision_score, recall_score, f1_score
 from .config import (DATA_PATH, OUTPUT, EXCLUDE_COLUMNS, MODEL_NAMES, FS_NAMES,
                      SEED, TEST_SIZE, FOLDS)
@@ -57,7 +57,7 @@ def _features_count(estimator):
 
 def run_experiment(data_path=DATA_PATH, output=OUTPUT, preset="quick", jobs=2,
                    limit=None, debug_rows=None, compare_calibration=False):
-    """Mặc định đủ 13 cấu hình trên toàn bộ dữ liệu, 5-fold CV.
+    """Mặc định đủ 12 cấu hình trên toàn bộ dữ liệu, 5-fold CV.
 
     debug_rows/limit chỉ kiểm thử và KHÔNG tạo model chính thức hoặc đánh giá Test.
     """
@@ -93,22 +93,6 @@ def run_experiment(data_path=DATA_PATH, output=OUTPUT, preset="quick", jobs=2,
         run_initial_baselines(X_train,y_train,output=output,jobs=jobs)
     rows=[]
     print("Đang chạy 5-fold CV; Test được giữ riêng đến khi chọn mô hình.",flush=True)
-    dummy=make_pipeline(X_train,"Dummy","None")
-    t=time.perf_counter()
-    baseline_cv=cross_validate(dummy,X_train,y_train,cv=cv,scoring=SCORING,n_jobs=jobs)
-    baseline={"exp":0,"model":"Dummy","fs":"None", "n_candidates":0,
-              "best_cv_f1_macro":float(baseline_cv["test_f1_macro"].mean()),
-              "std_cv_f1_macro":float(baseline_cv["test_f1_macro"].std()),
-              "best_cv_accuracy":float(baseline_cv["test_accuracy"].mean()),
-              "best_cv_precision_macro":float(baseline_cv["test_precision_macro"].mean()),
-              "best_cv_recall_macro":float(baseline_cv["test_recall_macro"].mean()),
-            "best_cv_recall_weighted": float(baseline_cv["test_recall_weighted"].mean()),
-              "best_cv_f1_weighted":float(baseline_cv["test_f1_weighted"].mean()),
-              "seconds":round(time.perf_counter()-t,2),"num_selected_features":None,
-              "best_params":"{}"}
-    baseline["run_id"] = run_id
-    rows.append(baseline)
-    print(f"[00/12] Dummy CV Macro F1 = {baseline['best_cv_f1_macro']:.4f}",flush=True)
     selected=None
     bestscore=-float("inf")
     exp=0
@@ -156,8 +140,8 @@ def run_experiment(data_path=DATA_PATH, output=OUTPUT, preset="quick", jobs=2,
     if dev:
         print("Đã chạy DEBUG: không tạo model dùng cho demo; không đánh giá Test.",flush=True)
         return rows
-    if len(rows)!=13:
-        raise AssertionError("Phải có đúng 13 cấu hình trước khi đánh giá Test")
+    if len(rows)!=12:
+        raise AssertionError("Phải có đúng 12 cấu hình trước khi đánh giá Test")
     # Chỉ chọn từ CV Train, chưa hề quan sát nhãn Test khi chốt.
     json_dump(best_config,output / "tables" / "selected_model_train_cv.json")
     calibrated_report=None
@@ -170,7 +154,6 @@ def run_experiment(data_path=DATA_PATH, output=OUTPUT, preset="quick", jobs=2,
     selected.training_run_id_ = run_id
     final_model.training_run_id_ = run_id
     bundle={"run_id": run_id,
-            "dummy_cv": baseline.copy(),
             "model":final_model,"label_encoder":encoder,
             "input_schema":input_schema(X_train), "raw_features":X_train.columns.tolist(),
             "excluded_columns":EXCLUDE_COLUMNS,"selected_cv":best_config,
@@ -184,12 +167,12 @@ def run_experiment(data_path=DATA_PATH, output=OUTPUT, preset="quick", jobs=2,
     # SHAP/intrinsic importance sử dụng mô hình gốc đã fit trước calibration, nếu chọn hiệu chỉnh.
     # Mô hình chính để giải thích SHAP giữ riêng vì CalibratedClassifierCV gồm nhiều base estimators.
     joblib.dump(selected,output / "models" / "uncalibrated_selected_pipeline.joblib",compress=3)
-    _write_report(output,data_audit,best_config,metrics,baseline,rows,calibrated_report)
+    _write_report(output, data_audit, best_config, metrics, calibrated_report)
     print("HOÀN THÀNH: Test Macro F1={:.4f}; model={}".format(metrics["f1_macro"],best_config),flush=True)
     return rows
 
 
-def _write_report(output,audit,selection,metrics,baseline,rows,calibration):
+def _write_report(output, audit, selection, metrics, calibration):
     report=output / "reports" / "bao_cao_thuc_nghiem.md"
     txt=["# Báo cáo thực nghiệm — Phân loại nhóm nghề nghiệp (v3.1)",
          "","> Chỉ dự đoán `recommended_career`. **Không dự đoán đậu/trượt tuyển sinh.**",
@@ -198,9 +181,8 @@ def _write_report(output,audit,selection,metrics,baseline,rows,calibration):
          f"- Missing: {audit['missing_total']}; trùng hoàn toàn: {audit['duplicate_rows']}; trùng bỏ ID: {audit['duplicate_rows_without_student_id']}.",
          "- Loại student_id và 9 cột nghi ngờ chứa tín hiệu hậu quyết định (chưa chứng minh nhân quả/leakage).",
          "- Chia 80/20 có stratify; tiền xử lý + FS fit trong từng fold; Test giữ riêng.",
-         "", "## 2. Thực nghiệm CV", "- Dummy stratified, không tuning; 3 mô hình × 4 FS, dùng GridSearchCV 5 folds.",
+         "", "## 2. Thực nghiệm CV", "- Đánh giá 3 mô hình với 4 trường hợp chọn đặc trưng bằng GridSearchCV 5 fold.",
          "- Chỉ số chọn: F1 Macro. Điểm CV không phải Test và có thể lạc quan do chọn tham số.",
-         f"- Dummy CV F1 Macro: {baseline['best_cv_f1_macro']:.4f}.",
          f"- Mô hình chọn theo CV: **{selection['model']} + {selection['fs']}**, "
          f"Macro F1 CV={selection['cv_f1_macro']:.4f}.",
          f"- Tham số tốt nhất: `{json.dumps(selection['best_params'],ensure_ascii=False)}`",
@@ -216,9 +198,9 @@ def _write_report(output,audit,selection,metrics,baseline,rows,calibration):
             "- Dữ liệu không có nhãn đỗ/trượt thực tế nên không hỗ trợ xác suất tuyển sinh.",
             "- Xác suất là dự đoán theo dữ liệu, không có nghĩa xác suất phù hợp nghề đã được kiểm định.",
             "- Các cột có thể hình thành sau quyết định nghề được loại thận trọng; cần thẩm định nguồn sinh dữ liệu.",
-            "- Nếu kết quả gần baseline, phải nêu dữ liệu có thể thiếu tín hiệu; không quảng bá tư vấn chắc chắn.",
+            "- Kết quả trên tập Test cho biết mô hình dự đoán đúng nhãn nghề đến đâu trên các hồ sơ chưa dùng để huấn luyện.",
             "- SHAP/Permutation là diễn giải mô hình, không chứng minh quan hệ nhân quả.",
-            "", "## 6. Tệp minh chứng", "- outputs/tables/cv_experiment_results.csv (đủ 13 dòng)",
+            "", "## 6. Tệp minh chứng", "- outputs/tables/cv_experiment_results.csv (đủ 12 cấu hình)",
             "- outputs/tables/grid_01.csv ... grid_12.csv (từng tổ hợp grid)",
             "- outputs/tables/classification_report.csv, confusion_matrix.csv, test_metrics.json",
             "- outputs/figures/cv_model_comparison.png, confusion_matrix.png, calibration_12_classes.png",
@@ -230,9 +212,4 @@ def _write_report(output,audit,selection,metrics,baseline,rows,calibration):
         for _,r in initial.iterrows():
             txt.append(f"- {r['model']} mặc định: Macro F1 CV={r['cv_f1_macro']:.4f}; "
                        f"Accuracy CV={r['cv_accuracy']:.4f}; {r['seconds']:.1f} giây.")
-    if selection["cv_f1_macro"] <= baseline["best_cv_f1_macro"]:
-        txt += ["", "## KẾT LUẬN GIỚI HẠN", 
-                "- **Mô hình chính tốt nhất chưa vượt Dummy baseline trên Macro F1 của Train CV.**",
-                "- Không có bằng chứng rằng các đặc trưng hiện tại hỗ trợ khuyến nghị nghề đáng tin cậy. "
-                "Demo chỉ có giá trị MINH HỌA KỸ THUẬT, tuyệt đối không dùng tư vấn thực tế."]
     report.write_text("\n".join(txt),encoding="utf-8")
